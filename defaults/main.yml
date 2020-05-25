@@ -31,6 +31,9 @@ postgresql_service_user_pgsql_profile: false
 postgresql_service_group: "{{ postgresql_admin_user }}"
 postgresql_service_enabled: true
 
+# If set to true, any parameter changes that require a restart will automatically trigger a restart. Default to requiring manual restart (false).
+postgresql_restart_on_config_change: false
+
 postgresql_cluster_name: "main"
 postgresql_cluster_reset: false
 
@@ -150,9 +153,9 @@ postgresql_ssl_cert_file: "/etc/ssl/certs/ssl-cert-snakeoil.pem"    # (>= 9.2)
 postgresql_ssl_key_file: "/etc/ssl/private/ssl-cert-snakeoil.key"   # (>= 9.2)
 postgresql_ssl_ca_file: ""                                          # (>= 9.2)
 postgresql_ssl_crl_file: ""                                         # (>= 9.2)
-postgresql_password_encryption: on
+postgresql_password_encryption: "{{ 'md5' if postgresql_version is version_compare('10', '>=') else 'on' }}"
 postgresql_db_user_namespace: off
-postgresql_row_security: off                                        # (>= 9.5)
+postgresql_row_security: on                                        # (>= 9.5)
 
 # Kerberos and GSSAPI
 postgresql_krb_server_keyfile: ""
@@ -172,7 +175,7 @@ postgresql_tcp_user_timeout: 0                                      # (>= 12)
 
 # - Memory -
 
-postgresql_shared_buffers:       128MB # min 128kB
+postgresql_shared_buffers:       256MB # min 128kB
 postgresql_huge_pages:           "try"   # on, off, or try
 postgresql_temp_buffers:         8MB   # min 800kB
 
