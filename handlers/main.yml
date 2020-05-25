@@ -1,7 +1,7 @@
 # file: postgresql/handlers/main.yml
 
-  - name: restart postgresql
-    service:
-      name: "{{ postgresql_service_name }}"
-      state: restarted
-      enabled: yes
+- name: reload postgresql
+  include_tasks: "{{ role_path }}/handlers/reload.yml"
+
+- name: restart postgresql
+  include_tasks: "{{ role_path }}/handlers/restart.yml"
