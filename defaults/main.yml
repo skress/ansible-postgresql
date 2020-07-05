@@ -599,7 +599,7 @@ postgresql_track_io_timing:           off   # (>= 9.2)
 postgresql_track_functions:           "none" # none, pl, all
 postgresql_track_activity_query_size: 1024
 postgresql_update_process_title:      on
-postgresql_stats_temp_directory:      "pg_stat_tmp"
+postgresql_stats_temp_directory:      "{{ postgresql_data_directory }}/pg_stat_tmp"
 
 
 # - Statistics Monitoring -

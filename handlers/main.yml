@@ -8,8 +8,8 @@
 - name: restart postgresql
   include_tasks: "{{ role_path }}/handlers/restart.yml"
 
- - name: restart repmgr
-   service:
-     name: "repmgr{{postgresql_version}}"
-     state: restarted
-     enabled: yes
+- name: restart repmgr
+  service:
+    name: "repmgr{{postgresql_version}}"
+    state: restarted
+    enabled: yes

@@ -1,5 +1,10 @@
 # file: postgresql/tasks/install_apt.yml
 
+- name: PostgreSQL | Check whether the postgres data directory is initialized
+  stat:
+    path: "{{ postgresql_data_directory }}/PG_VERSION"
+  register: deb_pgdata_dir_initialized
+
 # The standard ca-certs are needed because  without them apt_key will fail to
 # validate www.postgresql.org (or probably any other source).
 - name: PostgreSQL | Make sure the CA certificates are available | apt
