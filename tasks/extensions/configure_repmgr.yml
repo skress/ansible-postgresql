@@ -7,22 +7,44 @@
     mode: 0640
   notify: restart repmgr
 
-- name: Repmgr | Ensure systemd drop-in directory exists
+- name: Repmgr | Ensure systemd drop-in directory exists (not Debian)
   file:
     path: "/etc/systemd/system/repmgr{{postgresql_version}}.service.d/"
     state: directory
     mode: 0755
+  when: ansible_os_family != 'Debian'
 
-- name: Repmgr | Update drop-in
+- name: Repmgr | Update drop-in (not Debian)
   template:
     src: "repmgr.custom.conf.j2"
     dest: "/etc/systemd/system/repmgr{{postgresql_version}}.service.d/custom.conf"
+  when: ansible_os_family != 'Debian'
+
+- name: Repmgr | Create systemd unit file exists (Debian)
+  template:
+    src: "repmgr-systemd.service.j2"
+    dest: "/lib/systemd/system/repmgr@.service"
+    mode: 0755
+  when: ansible_os_family == 'Debian'
+
+- name: Repmgr | Delete /etc/init.d/repmgrd (Debian)
+  file:
+    path: /etc/init.d/repmgrd
+    state: absent
+  when: ansible_os_family == 'Debian'
 
 - name: Repmgr | Allow passwordless restarts with postgres user
   template:
     src: "sudoers.postgresql.j2"
     dest: "/etc/sudoers.d/postgresql"
     mode: 0640
+
+- name: Repmgr | Add the postgresql service user to the group that may use ssh
+  user:
+    name: "{{ postgresql_service_user }}"
+    groups: "{{ repmgr_ssh_allowed_group }}"
+    append: yes
+  when: repmgr_ssh_allowed_group != ''
 
 - name: Repmgr | Update .pgpass for postgres user
   template:
@@ -34,7 +56,7 @@
     trim_blocks: no
 
 - name: Repmgr | Generate ssh keypair for postgres user
-  command: "ssh-keygen -b {{repmgr_ssh_key_bits}} -t {{repmgr_ssh_key_type}} -f {{repmgr_private_key_path}} -N ''"
+  command: "ssh-keygen {{repmgr_ssh_key_args}} -f {{repmgr_private_key_path}} -N ''"
   args:
     creates: "{{repmgr_private_key_path}}"
   become: yes
@@ -89,9 +111,9 @@
   become_user: "{{ postgresql_service_user }}"
   when: repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "primary" in repmgr_cluster_show.stdout
 
-- name: Repmgr | Ensure postgresql slave is stopped before clone
+- name: Repmgr | Ensure postgresql replica is stopped before clone
   service:
-    name: "postgresql-{{postgresql_version}}"
+    name: "{{ ('postgresql-'+ postgresql_version|string) if (ansible_os_family != 'Debian') else ('postgresql@' + postgresql_version|string + '-' + postgresql_cluster_name) }}"
     state: stopped
   when: not repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout
 
@@ -101,15 +123,16 @@
   become_user: "{{ postgresql_service_user }}"
   when: not repmgr_primary and not ansible_hostname in  repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout
 
-- name: Repmgr | Ensure postgresql slave is running after clone
+- name: Repmgr | Ensure postgresql replica is running after clone
   service:
-    name: "postgresql-{{postgresql_version}}"
+    name: "{{ ('postgresql-'+ postgresql_version|string) if (ansible_os_family != 'Debian') else ('postgresql@' + postgresql_version|string + '-' + postgresql_cluster_name) }}"
     state: started
   when: not repmgr_primary
 
 - name: Repmgr | Wait for Postgres
   wait_for:
     timeout: 2
+  become: no
   delegate_to: localhost
 
 - name: Repmgr | Register standby
@@ -123,27 +146,35 @@
   become: yes
   become_user: "{{ postgresql_service_user }}"
 
-- name: Repmgr | Ensure repmgrd is running
+- name: Repmgr | Ensure repmgrd is running (not Debian)
   service:
     name: "repmgr{{postgresql_version}}"
     state: started
     enabled: yes
-  when: repmgr_monitoring_history == "true" or repmgr_failover == "automatic"
+  when: (repmgr_monitoring_history == "true" or repmgr_failover == "automatic") and ansible_os_family != 'Debian'
+
+- name: Repmgr | Ensure repmgrd is running (Debian)
+  systemd:
+    name: "repmgr@{{ postgresql_version }}-{{ postgresql_cluster_name }}"
+    state: started
+    daemon_reload: yes
+    enabled: yes
+  when: ansible_os_family == 'Debian'
 
 - name: Repmgr | Ensure crontab is installed
   package:
     name: crontabs
-  when: repmgr_monitoring_history == "true" or repmgr_failover == "automatic"
+  when: (repmgr_monitoring_history == "true" or repmgr_failover == "automatic") and (ansible_distribution == "RedHat" or ansible_distribution == "CentOS")
 
 - name: Repmgr | Ensure crond is running
   service:
-    name: "crond"
+    name: "{{ 'cron' if (ansible_os_family == 'Debian') else 'crond' }}"
     state: started
     enabled: yes
 
 - name: Repmgr | Setup cluster monitoring history cleanup
   copy:
-    content: "{{postgresql_bin_directory}}/repmgr -f {{postgresql_conf_directory}}/repmgr.conf cluster cleanup --keep-history={{repmgr_keep_history_days}}"
+    content: "{{ postgresql_bin_directory }}/repmgr -f {{postgresql_conf_directory}}/repmgr.conf cluster cleanup --keep-history={{repmgr_keep_history_days}}"
     dest: "/etc/cron.daily/repmgr_cleanup"
     mode: 0755
   when: repmgr_monitoring_history == "true" or repmgr_failover == "automatic"

@@ -1,0 +1,33 @@
+# Installed by Ansible, not part of the repmgr distribution files on Debian
+
+[Unit]
+Description=Replication manager, and failover management tool for PostgreSQL Cluster %i
+After=syslog.target
+After=network.target
+After=postgresql@%i.service
+
+[Service]
+Type=forking
+
+User={{ postgresql_service_user }}
+Group={{ postgresql_service_group }}
+
+# Location of repmgr conf file:
+Environment="REPMGRDCONF=/etc/postgresql/%I/repmgr.conf"
+
+# PID file (don't change it, it's encoded differently in Ansible)
+RuntimeDirectory=repmgrd-%i
+PIDFile=/run/repmgrd-%i/repmgrd.pid
+
+# Where to send early-startup messages from the server 
+# This is normally controlled by the global default set by systemd
+# StandardOutput=syslog
+ExecStart={{ postgresql_bin_directory }}/repmgrd -f ${REPMGRDCONF} --daemonize=true --verbose
+ExecStop=/usr/bin/kill -TERM $MAINPID
+ExecReload=/usr/bin/kill -HUP $MAINPID
+
+# Give a reasonable amount of time for the server to start up/shut down
+TimeoutSec=300
+
+[Install]
+WantedBy=multi-user.target
