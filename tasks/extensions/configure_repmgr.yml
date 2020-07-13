@@ -1,3 +1,45 @@
+- name: Repmgr | Make sure the repmgr user is present
+  postgresql_user:
+    name: "{{ repmgr_user }}"
+    password: "{{ repmgr_password }}"
+    role_attr_flags: SUPERUSER
+    port: "{{postgresql_port}}"
+    state: present
+    login_user: "{{ postgresql_admin_user }}"
+  no_log: true
+  become: yes
+  become_user: "{{ postgresql_admin_user }}"
+  when: repmgr_primary or repmgr_witness|default(false)
+
+- name: Repmgr | Make sure the repmgr database is present
+  postgresql_db:
+    name: "{{ repmgr_database }}"
+    owner: "{{ repmgr_user }}"
+    encoding: "UTF-8"
+    lc_collate: "{{ postgresql_locale }}"
+    lc_ctype: "{{ postgresql_ctype }}"
+    port: "{{postgresql_port}}"
+    template: "template0"
+    state: present
+    login_user: "{{ postgresql_admin_user }}"
+  become: yes
+  become_user: "{{ postgresql_admin_user }}"
+  when: repmgr_primary or repmgr_witness|default(false)
+
+- name: Repmgr | Update the user privileges
+  postgresql_user:
+    name: "{{ repmgr_user }}"
+    db: "{{ repmgr_database }}"
+    port: "{{ postgresql_port }}"
+    priv: "ALL"
+    state: present
+    login_user: "{{postgresql_admin_user}}"
+    role_attr_flags: "SUPERUSER,REPLICATION"
+  become: yes
+  become_user: "{{postgresql_admin_user}}"
+  no_log: true
+  when: repmgr_primary or repmgr_witness|default(false)
+
 - name: Repmgr | Update configuration (repmgr.conf)
   template:
     src: "repmgr.conf-{{ repmgr_version[:3] }}.j2"
@@ -20,7 +62,7 @@
     dest: "/etc/systemd/system/repmgr{{postgresql_version}}.service.d/custom.conf"
   when: ansible_os_family != 'Debian'
 
-- name: Repmgr | Create systemd unit file exists (Debian)
+- name: Repmgr | Create systemd unit file (Debian)
   template:
     src: "repmgr-systemd.service.j2"
     dest: "/lib/systemd/system/repmgr@.service"
@@ -115,19 +157,19 @@
   service:
     name: "{{ ('postgresql-'+ postgresql_version|string) if (ansible_os_family != 'Debian') else ('postgresql@' + postgresql_version|string + '-' + postgresql_cluster_name) }}"
     state: stopped
-  when: not repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout
+  when: not repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout and not repmgr_witness|default(false)
 
 - name: Repmgr | Clone standby
   command: "{{postgresql_bin_directory}}/repmgr -F -h {% for host, vars in hostvars.items() if 'repmgr_primary' in vars and vars['repmgr_primary'] == True %}{{ host }}{% endfor %} -U repmgr -d repmgr -f {{postgresql_conf_directory}}/repmgr.conf standby clone"
   become: yes
   become_user: "{{ postgresql_service_user }}"
-  when: not repmgr_primary and not ansible_hostname in  repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout
+  when: not repmgr_primary and not ansible_hostname in  repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout and not repmgr_witness|default(false)
 
 - name: Repmgr | Ensure postgresql replica is running after clone
   service:
     name: "{{ ('postgresql-'+ postgresql_version|string) if (ansible_os_family != 'Debian') else ('postgresql@' + postgresql_version|string + '-' + postgresql_cluster_name) }}"
     state: started
-  when: not repmgr_primary
+  when: not repmgr_primary and not repmgr_witness|default(false)
 
 - name: Repmgr | Wait for Postgres
   wait_for:
@@ -139,7 +181,13 @@
   command: "{{postgresql_bin_directory}}/repmgr -F -h {% for host, vars in hostvars.items() if 'repmgr_primary' in vars and vars['repmgr_primary'] == True %}{{ host }}{% endfor %} -U repmgr -d repmgr -f {{postgresql_conf_directory}}/repmgr.conf standby register"
   become: yes
   become_user: "{{ postgresql_service_user }}"
-  when: not repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout
+  when: not repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout and not repmgr_witness|default(false)
+
+- name: Repmgr | Register witness
+  command: "{{postgresql_bin_directory}}/repmgr -F -h {% for host, vars in hostvars.items() if 'repmgr_primary' in vars and vars['repmgr_primary'] == True %}{{ host }}{% endfor %} -U repmgr -d repmgr -f {{postgresql_conf_directory}}/repmgr.conf witness register"
+  become: yes
+  become_user: "{{ postgresql_service_user }}"
+  when: repmgr_witness|default(false) and not repmgr_primary and not ansible_hostname in repmgr_cluster_show.stdout and not "standby" in repmgr_cluster_show.stdout
 
 - name: Repmgr | Verify cluster functionality
   command: "{{postgresql_bin_directory}}/repmgr -F -h {% for host, vars in hostvars.items() if 'repmgr_primary' in vars and vars['repmgr_primary'] == True %}{{ host }}{% endfor %} -U repmgr -d repmgr -f {{postgresql_conf_directory}}/repmgr.conf cluster crosscheck"

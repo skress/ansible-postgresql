@@ -1,0 +1,5 @@
+{% if postgresql_ext_install_barman %}{% for server in ansible_play_hosts | sort 
+%}{{ server }}:{{ postgresql_port }}:*:{{ barman_pg_user }}:{{ barman_pg_password }}
+{{ server }}:{{ postgresql_port }}:*:{{ barman_pg_streaming_user }}:{{ barman_pg_streaming_password }}
+{% endfor %}{% endif %}
+

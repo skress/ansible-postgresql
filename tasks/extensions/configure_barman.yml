@@ -1,0 +1,105 @@
+# file: postgresql/tasks/extensions/configure_barman.yml
+
+- name: force all notified handlers to run at this point, not waiting for normal sync points
+  meta: flush_handlers
+
+- name: Barman | Update .pgpass for barman user
+  template:
+    src: "barman-pgpass.j2"
+    dest: "/var/lib/barman/.pgpass"
+    owner: "{{ barman_os_user }}"
+    group: "{{ barman_os_group }}"
+    mode: 0400
+    trim_blocks: no
+  when: barman_server|default(false)
+
+- name: Barman | Update configuration (barman.conf)
+  template:
+    src: "barman.conf-{{ barman_version }}.j2"
+    dest: "{{ barman_conf_directory }}/barman.conf"
+    owner: "{{ barman_os_user }}"
+    group: "{{ barman_os_group }}"
+    mode: 0640
+  when: barman_server|default(false)
+
+- name: Barman | Make sure the PostgreSQL superuser for barman is present
+  postgresql_user:
+    name: "{{ barman_pg_user }}"
+    password: "{{ barman_pg_password }}"
+    role_attr_flags: SUPERUSER
+    port: "{{postgresql_port}}"
+    state: present
+    login_user: "{{postgresql_admin_user}}"
+  no_log: true
+  become: yes
+  become_user: "{{postgresql_admin_user}}"
+  # when repmgr is used, install only on primary, or install on all hosts marked with barman_backup_node=true
+  when: repmgr_primary or (not postgresql_ext_install_repmgr and barman_backup_node|default(false))
+
+- name: Barman | Make sure the PostgreSQL user for streaming replication is present
+  postgresql_user:
+    name: "{{ barman_pg_streaming_user }}"
+    password: "{{ barman_pg_streaming_password }}"
+    role_attr_flags: REPLICATION
+    port: "{{postgresql_port}}"
+    state: present
+    login_user: "{{postgresql_admin_user}}"
+  no_log: true
+  become: yes
+  become_user: "{{postgresql_admin_user}}"
+  # when repmgr is used, install only on primary, or install on all hosts marked with barman_backup_node=true
+  when: repmgr_primary or (not postgresql_ext_install_repmgr and barman_backup_node|default(false))
+
+- name: Barman | Update configuration files for servers to be backed up
+  template:
+    src: "barman-streaming-server.conf-{{ barman_version }}.j2"
+    dest: "{{ barman_conf_directory }}/barman.d/{{ hostvars[item].barman_repmgr_backup_name|default(item) }}.conf"
+    owner: "{{ barman_os_user }}"
+    group: "{{ barman_os_group }}"
+    mode: 0640
+  loop: "{{ [ repmgr_primary_hostname ] if postgresql_ext_install_repmgr else ansible_play_hosts | map('extract',hostvars) | selectattr('barman_backup_node','defined') | selectattr('barman_backup_node','equalto',true) | map(attribute='inventory_hostname') | list }}"
+  when: barman_server|default(false)
+
+- name: Barman | Check backup configurations (if ok, we can skip waiting)
+  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman check {{ hostvars[item].barman_repmgr_backup_name|default(item) }}"
+  args:
+    executable: /bin/bash
+  register: barman_backup_check
+  become: yes
+  become_user: "{{ barman_os_user }}"
+  ignore_errors: true
+  loop: "{{ [ repmgr_primary_hostname ] if postgresql_ext_install_repmgr else ansible_play_hosts | map('extract',hostvars) | selectattr('barman_backup_node','defined') | selectattr('barman_backup_node','equalto',true) | map(attribute='inventory_hostname') | list }}"
+  when: barman_server|default(false)
+
+- name: Barman | Wait 2min for Postgres
+  wait_for:
+    timeout: 120
+  become: no
+  delegate_to: localhost
+  when: barman_server|default(false) and barman_backup_check.results | selectattr('rc', 'ne', 0) | list | count > 0
+
+# After installation there are no WAL files, so 'barman check' will fail.
+# In this step we force the PostgreSQL server to switch the WAL ...
+- name: Barman | Force switch-wal for failed backup configurations (timeout 3mins)
+  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman switch-wal --force --archive --archive-timeout 180 {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+  args:
+    executable: /bin/bash
+  register: barman_switch_wal
+  become: yes
+  become_user: "{{ barman_os_user }}"
+  ignore_errors: true
+  loop: "{{ barman_backup_check.results | selectattr('rc', 'ne', 0) | list }}"
+  when: barman_server|default(false)
+  loop_control:
+    label: "Backup-Config: {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+
+- name: Barman | Re-check backup configurations
+  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman check {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+  args:
+    executable: /bin/bash
+  become: yes
+  become_user: "{{ barman_os_user }}"
+  loop: "{{ barman_backup_check.results | selectattr('rc', 'ne', 0) | list }}"
+  when: barman_server|default(false)
+  loop_control:
+    label: "Backup-Config: {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"

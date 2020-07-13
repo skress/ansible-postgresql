@@ -1,0 +1,22 @@
+# file: postgresql/tasks/extensions/barman.yml
+
+- name: PostgreSQL | Extensions | barman | Fail if there is not exactly one barman node
+  fail:
+    msg: "There must be exactly one host for which variable 'barman_server' is set to 'true'."
+  delegate_to: localhost
+  become: no
+  run_once: true
+  when: play_hosts | map('extract',hostvars) | selectattr('barman_server','defined') | selectattr('barman_server','equalto','true') | map(attribute='barman_server') | list | count != 1
+
+- name: PostgreSQL | Extensions | barman | Fail if barman_server equals repmgr_primary
+  fail:
+    msg: "repmgr_primary and barman_server must not be equal."
+  when: barman_server|default(false) and postgresql_ext_install_repmgr and repmgr_primary
+
+- name: PostgreSQL | Extensions | barman | Make sure barman is installed | apt
+  apt:
+    name: "barman"
+    state: present
+    update_cache: yes
+    cache_valid_time: "{{apt_cache_valid_time | default (3600)}}"
+  when: barman_server|default(false)

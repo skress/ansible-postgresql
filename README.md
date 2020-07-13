@@ -1,61 +1,20 @@
-## ANXS - PostgreSQL [![Build Status](https://travis-ci.org/ANXS/postgresql.svg?branch=master)](https://travis-ci.org/ANXS/postgresql)
-
----
-Help Wanted! If you are able and willing to help maintain this Ansible role then please open a GitHub issue. A lot of people seem to use this role and we (quite obviously) need assistance!
-💖
----
+## Ansible PostgreSQL Role with Support for Repmgr and Barman
 
 Ansible role which installs and configures PostgreSQL, extensions, databases and users.
 
+This role is a fork of [ANXS.postgresl](https://github.com/ANXS/postgresql) with the following changes
 
-#### Installation
+- integrated all outstanding PRs which seemed reasonable (as of June 2020)
+- especially merged Repmgr extension (created by https://github.com/Demonware/postgresql)
+- added support for backups via Barman (https://www.pgbarman.org)
 
-This has been tested on Ansible 2.4.0 and higher.
+I am only testing this on Ubuntu 20.04 and the latest stable PostgreSQL version. Barman will only be installed on Debian-like system, so there is even no code for RedHat et. al.
 
-To install:
-
-```
-ansible-galaxy install ANXS.postgresql
-```
-
-#### Example Playbook
-
-Including an example of how to use your role:
-
-    - hosts: postgresql-server
-      become: yes
-      roles:
-         - { role: anxs.postgresql }
+This has been tested on Ansible 2.9.10. 
 
 #### Dependencies
 
 - ANXS.monit ([Galaxy](https://galaxy.ansible.com/list#/roles/502)/[GH](https://github.com/ANXS/monit)) if you want monit protection (in that case, you should set `monit_protection: true`)
-
-
-#### Compatibility matrix
-
-| Distribution / PostgreSQL | <= 9.3 | 9.4 | 9.5 | 9.6 | 10 | 11 | 12 |
-| ------------------------- |:---:|:---:|:---:|:---:|:--:|:--:|:--:|
-| Ubuntu 14.04 | :no_entry: | :no_entry:| :no_entry:| :no_entry:| :no_entry:| :no_entry:| :no_entry:|
-| Ubuntu 16.04 | :no_entry: | :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:|
-| Debian 8.x | :no_entry: | :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:|
-| Debian 9.x | :no_entry: | :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:|
-| CentOS 6.x | :no_entry: | :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:|
-| CentOS 7.x | :no_entry: | :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:| :white_check_mark:|
-| CentOS 8.x | :no_entry: | :grey_question:| :grey_question:| :grey_question:| :grey_question:| :grey_question:| :grey_question:|
-| Fedora latest | :no_entry: | :x:| :x:| :x:| :x:| :x:| :x:|
-
-- :white_check_mark: - tested, works fine
-- :warning: - Not for production use
-- :grey_question: - will work in the future (help out if you can)
-- :interrobang: - maybe works, not tested
-- :no_entry: - Has reached End of Life (EOL)
-
-
-#### Replication with repmgr
-
-There is initial support for setting up and running with replication managed by [repmgr](https://repmgr.org/). In it's current state it has only been tested with repmgr-4.2 and repmgr-5.0 on Centos 7 and requires Systemd.
-
 
 #### Variables
 
@@ -116,42 +75,82 @@ postgresql_user_privileges:
     db: foobar                  # database
     priv: "ALL"                 # privilege string format: example: INSERT,UPDATE/table:SELECT/anothertable:ALL
     role_attr_flags: "CREATEDB" # role attribute flags
-
-# Manage replication with repmgr (optional)
-repmgr_target_group: "postgresql-db"
-postgresql_ext_install_repmgr: yes
-repmgr_user: repmgr
-repmgr_database: repmgr
-postgresql_wal_level: "replica"
-postgresql_max_wal_senders: 10
-postgresql_max_replication_slots: 10
-postgresql_wal_keep_segments: 100
-postgresql_hot_standby: on
-postgresql_archive_mode: on
-postgresql_archive_command: "test ! -f /tmp/%f && cp %p /tmp/%f"
-postgresql_shared_preload_libraries:
-  - repmgr
-
-postgresql_users:
-  - name: "{{repmgr_user}}"
-    pass: "password"
-
-postgresql_databases:
-  - name: {{repmgr_database}}
-    owner: "{{repmgr_user}}"
-    encoding: "UTF-8"
-
-postgresql_user_privileges:
-  - name: "{{repmgr_user}}"
-    db: {{repmgr_database}}
-    priv: "ALL"
-    role_attr_flags: "SUPERUSER,REPLICATION"
 ```
 
 There's a lot more knobs and bolts to set, which you can find in the [defaults/main.yml](./defaults/main.yml)
 
+#### Replication with repmgr, backups with Barman
+
+There is initial support for setting up and running with replication managed by [repmgr](https://repmgr.org/) and backups with [Barman](https://www.pgbarman.org). In it's current state it has only been tested with repmgr-5.1 and barman-2.11 on Ubuntu 20.04 and requires Systemd.
+
+When repmgr is enabled (i.e. setting `postgresql_ext_install_repmgr: yes`) all hosts in your play are included in the replication cluster. The first host in your play is chosen as the initial primary. You can designate hosts as witness server by setting `repmgr_witness=true` for any host (except your first host).
+
+When barman is enabled (i.e. setting `postgresql_ext_install_barman: yes`) then you need to designate exactly one host as your barman server by setting `barman_server=true` for that host.
+
+If both repmgr and barman are enabled then the primary server will be backed up. If repmgr is disabled you can designate any number of hosts to be backed up via setting `barman_backup_node=true` for these hosts.
+
+Additionally if both extensions are enabled, the barman server needs to be configured as witness server, so `barman_server=true` and `repmgr_witness=true` should be set.
+
+Usage of replication slots is the default in this configuration for barman and repmgr. (If you do not want to use replication slots, you need to set `repmgr_use_replication_slots` to false and increase `postgresql_wal_keep_segments`.)
+
+To enable repmgr, the following variables need to be set:
+
+```yaml
+# Manage replication with repmgr (mandatory)
+postgresql_ext_install_repmgr: yes
+repmgr_version: "5.1"
+repmgr_password: "password"
+repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
+```
+
+When repmgr is enabled, a couple of settings for the PostgreSQL installation will get different defaults. You need to take care not to specify incompatible settings for your specific configuration.
+
+```yaml
+postgresql_wal_level: "replica"
+postgresql_max_replication_slots: 10
+postgresql_hot_standby: on
+postgresql_archive_mode: on
+postgresql_archive_command: '/bin/true'
+postgresql_shared_preload_libraries:
+  - repmgr
+```
+
+Additionally the following users, databases, and user privileges will be created automatically:
+
+```yaml
+users:
+  - name: "{{ repmgr_user }}"
+    pass: "{{ repmgr_password }}"
+
+databases:
+  - name: "{{ repmgr_database }}"
+    owner: "{{ repmgr_user }}"
+    encoding: "UTF-8"
+
+user_privileges:
+  - name: "{{ repmgr_user }}"
+    db: "{{ repmgr_database }}"
+    priv: "ALL"
+    role_attr_flags: "SUPERUSER,REPLICATION"
+```
+
+When barman is enabled, the following variables should be adapted:
+
+```yaml
+barman_pg_password: "password"
+barman_pg_streaming_password: "password"
+barman_server_ip_or_cidr: "127.0.0.1/32"
+```
+
+Barman will be configured to use streaming replication. This role does not support other barman configurations (e.g. rsync via ssh).
+
+When using barman in combination with repmgr, you can set the variable `barman_repmgr_backup_name` for your first host (i.e. the initial primary in your cluster. In that case the specified name will be used as the name for the backup configuration. Otherwise the hostname for your primary will be the name for your backup. (But that would get confusing when you should swith to a different primary later on.)
+
+Please note that in the case of switching over to a different master you would need to adapt your backup configuration manually.
 
 #### Testing
+
+Testing will probably not work anymore ...
 
 This project comes with a Vagrantfile, this is a fast and easy way to test changes to the role, fire it up with `vagrant up`
 
@@ -167,7 +166,6 @@ If you are contributing, please first test your changes within the vagrant envir
 #### License
 
 Licensed under the MIT License. See the [LICENSE](./LICENSE) file for details.
-
 
 #### Thanks
 
@@ -188,8 +186,3 @@ Top Contributors:
 - [Copperfield](https://github.com/Copperfield)
 
 - [Ralph von der Heyden](https://github.com/ralph)
-
-
-#### Feedback, bug-reports, requests, ...
-
-Are [welcome](https://github.com/ANXS/postgresql/issues)!

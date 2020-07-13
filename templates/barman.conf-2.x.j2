@@ -1,0 +1,23 @@
+; http://www.pgbarman.org/ - http://www.2ndQuadrant.com/
+;
+; Main configuration file
+
+[barman]
+; System user
+barman_user = {{ barman_os_user }}
+
+; Directory of configuration files. Place your sections in separate files with .conf extension
+; For example place the 'main' server section in /etc/barman.d/main.conf
+configuration_files_directory = {{ barman_conf_directory }}/barman.d
+
+; Main directory
+barman_home = /var/lib/barman
+
+; Locks directory - default: %(barman_home)s
+;barman_lock_directory = /var/run/barman
+
+; Log location
+log_file = /var/log/barman/barman.log
+
+; Log level (see https://docs.python.org/3/library/logging.html#levels)
+log_level = INFO

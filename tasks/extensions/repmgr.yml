@@ -1,15 +1,4 @@
-# file: postgresql/tasks/extensions/contrib.yml
-
-- name: PostgreSQL | Extensions | Add 2nd Quadrant repo gpg key | apt
-  apt_key:
-    url: "{{repmgr_gpg_key_url}}"
-  when: ansible_pkg_mgr == "apt"
-
-- name: PostgreSQL | Extensions | Add 2nd Quadrant repo for repmgr | apt
-  apt_repository:
-    repo: "{{repmgr_apt_repository}}"
-    filename: 2ndquadrant-dl-default-release
-  when: ansible_pkg_mgr == "apt"
+# file: postgresql/tasks/extensions/repmgr.yml
 
 - name: PostgreSQL | Extensions | Make sure the postgres repmgr extensions are installed | apt
   apt:
@@ -25,8 +14,8 @@
   yum_repository:
      name: "2ndquadrant-dl-default-release-pg{{postgresql_version}}"
      description: "2ndQuadrant packages (PG{{postgresql_version}}) for $releasever - $basearch"
-     baseurl: "{{ repmgr_baseurl }}"
-     gpgkey: "{{ repmgr_gpg_key_url }}"
+     baseurl: "{{ rpm_2ndquadrant_baseurl }}"
+     gpgkey: "{{ repo_2ndquadrant_gpg_key_url }}"
   when: ansible_pkg_mgr == "yum" or ansible_pkg_mgr == "dnf"
 
 - name: PostgreSQL | Extensions | Make sure the postgres repmgr extensions are installed | yum
