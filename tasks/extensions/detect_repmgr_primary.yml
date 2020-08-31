@@ -22,12 +22,12 @@
 
 - name: Repmgr | Declare as primary for new installation
   set_fact:
-    repmgr_primary: "{{ true if ansible_hostname == ansible_play_hosts[0] or inventory_hostname == ansible_play_hosts[0] else false }}"
+    repmgr_primary: "{{ true if ansible_hostname == ansible_play_hosts_all[0] or inventory_hostname == ansible_play_hosts_all[0] else false }}"
   when: "hostvars['localhost'].get('repmgr_primary_declared', false) != true"
 
 - name: Repmgr | Set repmgr_primary_hostname variable
   set_fact:
-    repmgr_primary_hostname: "{{ ansible_play_hosts | map('extract',hostvars) | selectattr('repmgr_primary','defined') | selectattr('repmgr_primary','equalto',true) | map(attribute='inventory_hostname') | list | first }}"
+    repmgr_primary_hostname: "{{ ansible_play_hosts_all | map('extract',hostvars) | selectattr('repmgr_primary','defined') | selectattr('repmgr_primary','equalto',true) | map(attribute='inventory_hostname') | list | first }}"
 
 - debug:
     var: repmgr_primary

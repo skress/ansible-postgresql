@@ -6,7 +6,7 @@
   delegate_to: localhost
   become: no
   run_once: true
-  when: play_hosts | map('extract',hostvars) | selectattr('barman_server','defined') | selectattr('barman_server','equalto','true') | map(attribute='barman_server') | list | count != 1
+  when: ansible_play_hosts_all | map('extract',hostvars) | selectattr('barman_server','defined') | selectattr('barman_server','equalto',true) | map(attribute='barman_server') | list | count != 1
 
 - name: PostgreSQL | Extensions | barman | Fail if barman_server equals repmgr_primary
   fail:

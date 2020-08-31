@@ -848,7 +848,7 @@ repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
 #
 
 # repmgr_target_hosts is currently only used to restrict the pg_hba entries
-repmgr_target_hosts: "{{ ansible_play_hosts }}"
+repmgr_target_hosts: "{{ ansible_play_hosts_all }}"
 repmgr_user: "repmgr"
 repmgr_database: "repmgr"
 repmgr_conninfo: "host={{ansible_hostname}} user={{repmgr_user}} dbname={{repmgr_database}} connect_timeout=2"
