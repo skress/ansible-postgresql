@@ -4,7 +4,32 @@ Package: *
 Pin: release o=apt.postgresql.org
 Pin-Priority: {{ postgresql_apt_pin_priority }}
 {% if (postgresql_ext_install_repmgr and ansible_service_mgr == 'systemd') or postgresql_ext_install_barman %}
+
 Package: *
 Pin: release o={{ repo_2ndquadrant_hostname }}
 Pin-Priority: {{ postgresql_apt_pin_priority }}
 {% endif %}
+
+Package: postgresql*
+Pin: version {{ postgresql_version + 1 }}*
+Pin-Priority: -1
+
+Package: postgresql*
+Pin: version {{ postgresql_version + 2 }}*
+Pin-Priority: -1
+
+Package: postgresql-{{postgresql_version}}-repmgr
+Pin: version {{ repmgr_major_version }}.{{ repmgr_minor_version + 1 }}*
+Pin-Priority: -1
+
+Package: postgresql-{{postgresql_version}}-repmgr
+Pin: version {{ repmgr_major_version }}.{{ repmgr_minor_version + 2 }}*
+Pin-Priority: -1
+
+Package: postgresql-{{postgresql_version}}-repmgr
+Pin: version {{ repmgr_major_version }}.{{ repmgr_minor_version + 3 }}*
+Pin-Priority: -1
+
+Package: postgresql-{{postgresql_version}}-repmgr
+Pin: version {{ repmgr_major_version + 1 }}*
+Pin-Priority: -1

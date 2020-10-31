@@ -1,5 +1,6 @@
 # file: postgresql/tasks/extensions/repmgr.yml
 
+# NOTE: the package name is also used to pin the apt package
 - name: PostgreSQL | Extensions | Make sure the postgres repmgr extensions are installed | apt
   apt:
     name: "postgresql-{{postgresql_version}}-repmgr"
