@@ -136,7 +136,7 @@ postgresql_bonjour_name: ""  # defaults to the computer name
 # - Security and Authentication -
 
 postgresql_authentication_timeout: 60s
-postgresql_ssl: off
+postgresql_ssl: false
 postgresql_ssl_ciphers:
   - "DEFAULT"
   - "!LOW"
@@ -887,7 +887,7 @@ repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
 repmgr_target_hosts: "{{ ansible_play_hosts_all }}"
 repmgr_user: "repmgr"
 repmgr_database: "repmgr"
-repmgr_conninfo: "host={{ansible_hostname}} user={{repmgr_user}} dbname={{repmgr_database}} connect_timeout=2"
+repmgr_conninfo: "host={{ansible_hostname}} user={{repmgr_user}} dbname={{repmgr_database}} connect_timeout=2{% if postgresql_ssl %} sslmode=require{% endif %}"
 repmgr_data_directory: "{{postgresql_data_directory}}"
 
 # Replication

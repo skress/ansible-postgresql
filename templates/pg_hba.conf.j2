@@ -27,31 +27,31 @@
 
 # MD5 hashed password hosts
 {% for host in postgresql_pg_hba_md5_hosts %}
-host  all  all  {{host}}  md5
+host{% if postgresql_ssl %}ssl{% endif %}  all  all  {{host}}  md5
 {% endfor %}
 
 # Password hosts
 {% for host in postgresql_pg_hba_passwd_hosts %}
-host  all  all  {{host}}  password
+host{% if postgresql_ssl %}ssl{% endif %}  all  all  {{host}}  password
 {% endfor %}
 
 # Trusted hosts
 {% for host in postgresql_pg_hba_trust_hosts %}
-host  all  all  {{host}}  trust
+host{% if postgresql_ssl %}ssl{% endif %}  all  all  {{host}}  trust
 {% endfor %}
 
 {% if postgresql_ext_install_repmgr %}
 local   replication   {{ repmgr_replication_user }}                  {{ postgresql_default_auth_method }}
-host    replication   {{ repmgr_replication_user }}   127.0.0.1/32   {{ postgresql_default_auth_method_hosts }}
-host    replication   {{ repmgr_replication_user }}   {{ repmgr_network_cidr }}   {{ postgresql_default_auth_method_hosts }}
+host{% if postgresql_ssl %}ssl{% endif %}    replication   {{ repmgr_replication_user }}   127.0.0.1/32   {{ postgresql_default_auth_method_hosts }}
+host{% if postgresql_ssl %}ssl{% endif %}    replication   {{ repmgr_replication_user }}   {{ repmgr_network_cidr }}   {{ postgresql_default_auth_method_hosts }}
 local   {{ repmgr_database }}        {{ repmgr_user }}                  {{ postgresql_default_auth_method }}
-host    {{ repmgr_database }}        {{ repmgr_user }}   127.0.0.1/32   {{ postgresql_default_auth_method_hosts }}
-host    {{ repmgr_database }}        {{ repmgr_user }}   {{ repmgr_network_cidr }}   {{ postgresql_default_auth_method_hosts }}
+host{% if postgresql_ssl %}ssl{% endif %}    {{ repmgr_database }}        {{ repmgr_user }}   127.0.0.1/32   {{ postgresql_default_auth_method_hosts }}
+host{% if postgresql_ssl %}ssl{% endif %}    {{ repmgr_database }}        {{ repmgr_user }}   {{ repmgr_network_cidr }}   {{ postgresql_default_auth_method_hosts }}
 {% endif %}
 
 {% if postgresql_ext_install_barman and ( barman_backup_node|default(false) or postgresql_ext_install_repmgr ) %}
-host    all           {{ barman_pg_user }}             {{ barman_server_ip_or_cidr }}   {{ postgresql_default_auth_method_hosts }}
-host    replication   {{ barman_pg_streaming_user }}   {{ barman_server_ip_or_cidr }}   {{ postgresql_default_auth_method_hosts }}
+host{% if postgresql_ssl %}ssl{% endif %}    all           {{ barman_pg_user }}             {{ barman_server_ip_or_cidr }}   {{ postgresql_default_auth_method_hosts }}
+host{% if postgresql_ssl %}ssl{% endif %}    replication   {{ barman_pg_streaming_user }}   {{ barman_server_ip_or_cidr }}   {{ postgresql_default_auth_method_hosts }}
 {% endif %}
 
 # User custom
