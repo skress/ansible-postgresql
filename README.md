@@ -8,9 +8,9 @@ This role is a fork of [ANXS.postgresl](https://github.com/ANXS/postgresql) with
 - especially merged Repmgr extension (created by https://github.com/Demonware/postgresql)
 - added support for backups via Barman (https://www.pgbarman.org)
 
-I am only testing this on Ubuntu 20.04 and the latest stable PostgreSQL version. Barman will only be installed on Debian-like system, so there is even no code for RedHat et. al.
+I am only testing this on Ubuntu 20.04 and the latest stable PostgreSQL version. Barman will only be installed on Debian-like systems, so there is even no code for RedHat et. al.
 
-This has been tested on Ansible 2.9.10. 
+This has been tested on Ansible 2.10.5. 
 
 #### Dependencies
 
@@ -20,7 +20,7 @@ This has been tested on Ansible 2.9.10.
 
 ```yaml
 # Basic settings
-postgresql_version: 12
+postgresql_version: 13
 postgresql_encoding: "UTF-8"
 postgresql_locale: "en_US.UTF-8"
 postgresql_ctype: "en_US.UTF-8"
@@ -81,7 +81,7 @@ There's a lot more knobs and bolts to set, which you can find in the [defaults/m
 
 #### Replication with repmgr, backups with Barman
 
-There is initial support for setting up and running with replication managed by [repmgr](https://repmgr.org/) and backups with [Barman](https://www.pgbarman.org). In it's current state it has only been tested with repmgr-5.1 and barman-2.11 on Ubuntu 20.04 and requires Systemd.
+There is initial support for setting up and running with replication managed by [repmgr](https://repmgr.org/) and backups with [Barman](https://www.pgbarman.org). In it's current state it has only been tested with repmgr-5.2 and barman-2.12 on Ubuntu 20.04 and requires Systemd.
 
 When repmgr is enabled (i.e. setting `postgresql_ext_install_repmgr: yes`) all hosts in your play are included in the replication cluster. The first host in your play is chosen as the initial primary. You can designate hosts as witness server by setting `repmgr_witness=true` for any host (except your first host).
 
@@ -91,14 +91,15 @@ If both repmgr and barman are enabled then the primary server will be backed up.
 
 Additionally if both extensions are enabled, the barman server needs to be configured as witness server, so `barman_server=true` and `repmgr_witness=true` should be set.
 
-Usage of replication slots is the default in this configuration for barman and repmgr. (If you do not want to use replication slots, you need to set `repmgr_use_replication_slots` to false and increase `postgresql_wal_keep_segments`.)
+Usage of replication slots is the default in this configuration for barman and repmgr. (If you do not want to use replication slots, you need to set `repmgr_use_replication_slots` to false and increase `postgresql_wal_keep_segments`.) This has not been tested.
 
 To enable repmgr, the following variables need to be set:
 
 ```yaml
 # Manage replication with repmgr (mandatory)
 postgresql_ext_install_repmgr: yes
-repmgr_version: "5.1"
+repmgr_major_version: 5
+repmgr_minor_version: 2
 repmgr_password: "password"
 repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
 ```
@@ -114,6 +115,8 @@ postgresql_archive_command: '/bin/true'
 postgresql_shared_preload_libraries:
   - repmgr
 ```
+
+Depending on the size of your cluster you might need more replication slots. In that case you need to override the default.
 
 Additionally the following users, databases, and user privileges will be created automatically:
 
@@ -144,9 +147,30 @@ barman_server_ip_or_cidr: "127.0.0.1/32"
 
 Barman will be configured to use streaming replication. This role does not support other barman configurations (e.g. rsync via ssh).
 
-When using barman in combination with repmgr, you can set the variable `barman_repmgr_backup_name` for your first host (i.e. the initial primary in your cluster. In that case the specified name will be used as the name for the backup configuration. Otherwise the hostname for your primary will be the name for your backup. (But that would get confusing when you should swith to a different primary later on.)
+This playbook makes a lot of assumptions when using barman in combination with repmgr:
+- For the initial installation a backup configuration is created for the repmgr primary.
+- Additionally for all other standbys a backup configuration is created which ends in '.conf.hold' such that this configuration is not automatically picked up by barman's cron job.
 
-Please note that in the case of switching over to a different master you would need to adapt your backup configuration manually.
+When re-running this playbook:
+- ... it checks if there is a '<node_name>.conf.hold' file for the current primary, if yes the playbook fails
+- ... it checks if there is a '<node_name>.conf' file for any standby, if yes the playbook fails
+- ... it makes sure that there is a backup config ('<node_name>.conf') for the current primary
+- ... it makes sure that there is a backup config ('<node_name>.conf.hold') for the all standby nodes
+
+When a failover or switchover occurs, you should manually disable the backup from the previous primary by running `/var/lib/barman/bin/disable-backup.sh <server_name>` as root and then enabling the backup for the newly elected primary by running `/var/lib/barman/bin/enable-backup.sh <server_name>`.
+
+Re-enabling a backup (e.g. you previously switched over to another host and now back to your old hast again) might result in errors. So carefully look at the command output when enabling the backup.
+
+You might need to run a couple of commands as 'barman':
+```bash
+barman receive-wal --create-slot <new_primary_hostname>
+barman cron
+# now check output of log
+less /var/log/barman/barman.log
+# probably we need to reset the receive-wal process
+barman receive-wal --reset <new_primary_hostname>
+barman backup <new_primary_hostname>
+```
 
 #### Testing
 

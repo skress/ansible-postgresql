@@ -11,6 +11,9 @@ postgresql_varlib_directory_name: "pgsql"
 # Used to execute initdb
 postgresql_bin_directory: "/usr/pgsql-{{postgresql_version}}/bin"
 
+# Path to PostgreSQL binary directory (location of pg_ctl, pg_basebackup etc.).
+postgresql_lib_bin_directory: "{{ postgresql_bin_directory }}"
+
 postgresql_unix_socket_directories:
   - "{{ postgresql_pid_directory }}"
   - /tmp

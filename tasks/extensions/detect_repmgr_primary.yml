@@ -1,3 +1,17 @@
+- name: Repmgr | Gather the package facts
+  package_facts:
+    manager: auto
+
+- name: Barman | Set barman_package_name variable (apt)
+  set_fact:
+    barman_package_name: "postgresql-{{postgresql_version}}-repmgr"
+  when: ansible_pkg_mgr == "apt"
+
+- name: Barman | Set barman_package_name variable (yum)
+  set_fact:
+    barman_package_name: "repmgr{{postgresql_version}}-{{repmgr_version}}"
+  when: ansible_pkg_mgr == "yum"
+
 - name: Repmgr | Detect primary
   shell: "set -o pipefail ; {{ postgresql_bin_directory }}/repmgr -f {{ postgresql_conf_directory }}/repmgr.conf cluster show | grep primary | cut -d '|' -f 2 | sed 's/\ //g'"
   args:
@@ -6,6 +20,12 @@
   become: yes
   become_user: postgres
   ignore_errors: True
+
+- name: Repmgr | Fail play when repmgr is already installed and 'repmgr cluster show' did not return with rc==0
+  fail:
+    msg: "Command 'repmgr cluster show' returned an error or a warning. Please check your PostgreSQL installation immediately! {{ repmgr_primary_check }}"
+  when: "barman_package_name in ansible_facts.packages and repmgr_primary_check.rc != 0"
+  any_errors_fatal: true
 
 - name: Repmgr | Declare as primary for existing installation
   set_fact:

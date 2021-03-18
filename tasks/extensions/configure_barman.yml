@@ -3,6 +3,10 @@
 - name: force all notified handlers to run at this point, not waiting for normal sync points
   meta: flush_handlers
 
+- name: Barman | Set barman_server_hostname variable
+  set_fact:
+    barman_server_hostname: "{{ ansible_play_hosts_all | map('extract',hostvars) | selectattr('barman_server','defined') | selectattr('barman_server','equalto',true) | map(attribute='inventory_hostname') | list | first }}"
+
 - name: Barman | Update .pgpass for barman user
   template:
     src: "barman-pgpass.j2"
@@ -12,6 +16,82 @@
     mode: 0400
     trim_blocks: no
   when: barman_server|default(false)
+
+- name: Barman | Add the barman user to the group that may use ssh
+  user:
+    name: "{{ barman_os_user }}"
+    groups: "{{ postgresql_ssh_allowed_group }}"
+    append: yes
+  when: barman_server|default(false) and postgresql_ssh_allowed_group != ''
+
+- name: Barman | Generate ssh keypair for barman user
+  command: "ssh-keygen {{ postgresql_ssh_key_args }} -f {{ barman_private_key_path }} -N ''"
+  args:
+    creates: "{{ barman_private_key_path }}"
+  become: yes
+  become_user: "{{ barman_os_user }}"
+  when: barman_server|default(false) and barman_enable_passwordless_access_to_postgres
+
+- name: Barman | Slurp ssh public key (barman user)
+  slurp:
+    src: "{{ barman_public_key_path }}"
+  register: barman_ssh_public_key
+  when: barman_server|default(false) and barman_enable_passwordless_access_to_postgres
+
+- name: Barman | Slurp ssh private key (barman user)
+  slurp:
+    src: "{{ barman_private_key_path }}"
+  register: barman_ssh_private_key
+  when: barman_server|default(false) and barman_enable_passwordless_access_to_postgres
+
+- name: Barman | Update authorized_keys for postgres user to include barman's key
+  authorized_key:
+    user: "{{ postgresql_service_user }}"
+    state: present
+    key: "{% for host, vars in hostvars.items() if 'barman_server' in vars and vars['barman_server'] == True %}{{ vars['barman_ssh_public_key']['content'] | b64decode }}{% endfor %}"
+  when: barman_enable_passwordless_access_to_postgres
+
+- name: Barman | Generate ssh keypair for postgres user if necessary
+  command: "ssh-keygen {{ postgresql_ssh_key_args }} -f {{ postgresql_private_key_path }} -N ''"
+  args:
+    creates: "{{ postgresql_private_key_path }}"
+  become: yes
+  become_user: "{{ postgresql_service_user }}"
+  when: not postgresql_ext_install_repmgr
+
+- name: Barman | Slurp ssh public key (postgres user)
+  slurp:
+    src: "{{ postgresql_public_key_path }}"
+  register: pgsql_ssh_public_key
+  when: not postgresql_ext_install_repmgr or (repmgr_primary is defined and repmgr_primary)
+
+- name: Barman | Slurp ssh private key (postgres user)
+  slurp:
+    src: "{{ postgresql_private_key_path }}"
+  register: pgsql_ssh_private_key
+  when: not postgresql_ext_install_repmgr or (repmgr_primary is defined and repmgr_primary)
+
+- name: Barman | Update authorized_keys for barman user
+  authorized_key:
+    user: "{{ barman_os_user }}"
+    state: present
+    key: "{{ item }}"
+  when: barman_server|default(false)
+  loop: "{{ hostvars | dict2items | selectattr('value.pgsql_ssh_public_key', 'defined') | selectattr('value.pgsql_ssh_public_key.content', 'defined') | map(attribute='value.pgsql_ssh_public_key.content') | map('b64decode') }}"
+
+- name: Barman | Configure /var/lib/postgresql/.ssh/config to be able to access barman server from pgsql nodes
+  blockinfile:
+    path: /var/lib/postgresql/.ssh/config
+    create: yes
+    mode: 0600
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_group }}"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK"
+    marker_begin: "barman - begin"
+    marker_end: "barman - end"
+    block: |
+      Host {{ barman_server_hostname }}
+        Port {{ barman_ssh_port }}
 
 - name: Barman | Update configuration (barman.conf)
   template:
@@ -50,18 +130,54 @@
   # when repmgr is used, install only on primary, or install on all hosts marked with barman_backup_node=true
   when: repmgr_primary or (not postgresql_ext_install_repmgr and barman_backup_node|default(false))
 
+- name: "Barman | Check if backup config files exists"
+  ansible.builtin.stat:
+    path: "{{ barman_conf_directory }}/barman.d/{{ item }}.conf"
+  loop: "{{ ansible_play_hosts_all }}"
+  register: barman_configs
+  when: barman_server|default(false)
+
+- name: "Barman | Check if backup config file on hold for current primary exists"
+  ansible.builtin.stat:
+    path: "{{ barman_conf_directory }}/barman.d/{{ repmgr_primary_hostname }}.conf.hold"
+  register: barman_config_hold_primary
+  when: barman_server|default(false)
+
+- name: Barman | Fail if backup config is on hold for current primary and repmgr is used
+  fail:
+    msg: "ERROR: The backup for the current primary {{ repmgr_primary_hostname }} is on hold. Please fix your backup configuration first."
+  when: barman_server|default(false) and postgresql_ext_install_repmgr and barman_config_hold_primary.stat.exists
+  any_errors_fatal: true
+
+- name: Barman | Fail if a backup config file for a standby exists and repmgr is used
+  fail:
+    msg: "ERROR: There exists a backup config for {{ item.item }} but that host is currently not the primary. Please fix your backup configuration first."
+  when: barman_server|default(false) and postgresql_ext_install_repmgr and item.stat.exists and item.item != repmgr_primary_hostname
+  loop: "{{ barman_configs.results }}"
+  any_errors_fatal: true
+
 - name: Barman | Update configuration files for servers to be backed up
   template:
     src: "barman-streaming-server.conf-{{ barman_version }}.j2"
-    dest: "{{ barman_conf_directory }}/barman.d/{{ hostvars[item].barman_repmgr_backup_name|default(item) }}.conf"
+    dest: "{{ barman_conf_directory }}/barman.d/{{ item }}.conf"
     owner: "{{ barman_os_user }}"
     group: "{{ barman_os_group }}"
     mode: 0640
   loop: "{{ [ repmgr_primary_hostname ] if postgresql_ext_install_repmgr else ansible_play_hosts_all | map('extract',hostvars) | selectattr('barman_backup_node','defined') | selectattr('barman_backup_node','equalto',true) | map(attribute='inventory_hostname') | list }}"
   when: barman_server|default(false)
 
+- name: Barman | Update "on hold" configuration files for servers to be backed up
+  template:
+    src: "barman-streaming-server.conf-{{ barman_version }}.j2"
+    dest: "{{ barman_conf_directory }}/barman.d/{{ item }}.conf.hold"
+    owner: "{{ barman_os_user }}"
+    group: "{{ barman_os_group }}"
+    mode: 0640
+  when: barman_server|default(false) and postgresql_ext_install_repmgr and item != repmgr_primary_hostname and item != barman_server_hostname
+  loop: "{{ ansible_play_hosts_all }}"
+
 - name: Barman | Check backup configurations (if ok, we can skip waiting)
-  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman check {{ hostvars[item].barman_repmgr_backup_name|default(item) }}"
+  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman check {{ item }}"
   args:
     executable: /bin/bash
   register: barman_backup_check
@@ -80,8 +196,9 @@
 
 # After installation there are no WAL files, so 'barman check' will fail.
 # In this step we force the PostgreSQL server to switch the WAL ...
+# TODO: check if this really works, probably the replication slot is missing?
 - name: Barman | Force switch-wal for failed backup configurations (timeout 3mins)
-  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman switch-wal --force --archive --archive-timeout 180 {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman switch-wal --force --archive --archive-timeout 180 {{ item.item }}"
   args:
     executable: /bin/bash
   register: barman_switch_wal
@@ -91,10 +208,10 @@
   loop: "{{ barman_backup_check.results | selectattr('rc', 'ne', 0) | list }}"
   when: barman_server|default(false)
   loop_control:
-    label: "Backup-Config: {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+    label: "Backup-Config: {{ item.item }}"
 
 - name: Barman | Re-check backup configurations
-  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman check {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+  shell: "set -o pipefail ; {{ barman_bin_directory }}/barman check {{ item.item }}"
   args:
     executable: /bin/bash
   become: yes
@@ -102,4 +219,13 @@
   loop: "{{ barman_backup_check.results | selectattr('rc', 'ne', 0) | list }}"
   when: barman_server|default(false)
   loop_control:
-    label: "Backup-Config: {{ hostvars[item.item].barman_repmgr_backup_name|default(item.item) }}"
+    label: "Backup-Config: {{ item.item }}"
+
+- name: Barman | Install cron file for regular backups
+  template:
+    src: "barman-backup.cron.j2"
+    dest: "/etc/cron.d/barman-backup"
+    owner: root
+    group: root
+    mode: 0640
+  when: barman_server|default(false)

@@ -13,6 +13,10 @@
     msg: "repmgr_primary and barman_server must not be equal."
   when: barman_server|default(false) and postgresql_ext_install_repmgr and repmgr_primary
 
+- name: Repmgr | Set repmgr_primary_hostname variable
+  set_fact:
+    barman_server_hostname: "{{ ansible_play_hosts_all | map('extract',hostvars) | selectattr('barman_server','defined') | selectattr('barman_server','equalto',true) | map(attribute='inventory_hostname') | list | first }}"
+
 - name: PostgreSQL | Extensions | barman | Make sure barman is installed | apt
   apt:
     name: "barman"
@@ -20,3 +24,41 @@
     update_cache: yes
     cache_valid_time: "{{apt_cache_valid_time | default (3600)}}"
   when: barman_server|default(false)
+
+- name: PostgreSQL | Extensions | barman | Make sure barman-cli is installed | apt
+  apt:
+    name: "barman-cli"
+    state: present
+    update_cache: yes
+    cache_valid_time: "{{apt_cache_valid_time | default (3600)}}"
+
+- name: PostgreSQL | Extensions | barman | Make sure bzip2 is installed when needed | apt
+  apt:
+    name: "bzip2"
+    state: present
+    update_cache: yes
+    cache_valid_time: "{{apt_cache_valid_time | default (3600)}}"
+  when: barman_server|default(false) and barman_compress|default('') == "bzip2"
+
+# /var/lib/barman is barman's home directory (defined by the Ubuntu package)
+- name: PostgreSQL | Extensions | barman | Make sure the barman script bin-dir exists
+  file:
+    path: "/var/lib/barman/bin"
+    owner: "{{ barman_os_user }}"
+    group: "{{ barman_os_group }}"
+    state: directory
+    mode: 0740
+  when: barman_server|default(false) 
+
+# /var/lib/barman is barman's home directory (defined by the Ubuntu package)
+- name: PostgreSQL | Extensions | barman | Copy scripts to barman script bin-dir
+  ansible.builtin.copy:
+    src: "files/{{ item }}"
+    dest: "/var/lib/barman/bin/{{ item }}"
+    owner: "{{ barman_os_user }}"
+    group: "{{ barman_os_group }}"
+    mode: u+rx,g+rx,o-rwx
+  loop:
+    - barman-enable-backup.sh
+    - barman-disable-backup.sh
+  when: barman_server|default(false) 

@@ -342,6 +342,9 @@ postgresql_recovery_min_apply_delay: 0             # (>= 12)
 # Set these on the master and on any standby that will send replication data.
 
 # max number of walsender processes
+# when using replication: must be set to a value of 2 or greater. In general you will need one WAL sender 
+#                         for each standby which will attach to the PostgreSQL instance; additionally repmgr 
+#                         will require two free WAL senders in order to clone further standbys.
 postgresql_max_wal_senders: "{{ 10 if (postgresql_ext_install_repmgr or postgresql_ext_install_barman) else 0}}"
 postgresql_wal_sender_delay: 1s     # walsender cycle time, 1-10000 milliseconds (<= 9.1)
 
@@ -870,13 +873,22 @@ rpm_2ndquadrant_baseurl: "https://dl.2ndquadrant.com/default/release/rpm/package
 apt_2ndquadrant_repository: "deb [arch=amd64] https://dl.2ndquadrant.com/default/release/apt {{ ansible_distribution_release }}-2ndquadrant main"
 
 #------------------------------------------------------------------------------
+# REPMGR/BARMAN EXTENSIONS
+#------------------------------------------------------------------------------
+# this is used for repmgr and barman
+postgresql_ssh_key_args: "-t ed25519 -a 100"
+postgresql_private_key_path: "/var/lib/postgresql/.ssh/id_ed25519"
+postgresql_public_key_path: "/var/lib/postgresql/.ssh/id_ed25519.pub"
+postgresql_ssh_allowed_group: "{{ 'ssh-user' if ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu' else '' }}"
+
+#------------------------------------------------------------------------------
 # REPMGR EXTENSION
 #------------------------------------------------------------------------------
 
 # Required configuration items
 repmgr_version: "{{ repmgr_major_version }}.{{ repmgr_minor_version }}"
 repmgr_major_version: 5
-repmgr_minor_version: 1
+repmgr_minor_version: 2
 repmgr_password: "password"
 repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
 
@@ -901,10 +913,6 @@ repmgr_use_replication_slots: "true"
 repmgr_witness_sync_interval: 15
 repmgr_use_primary_conninfo_password: "false"
 repmgr_passfile: "/var/lib/postgresql/.pgpass"
-repmgr_private_key_path: "/var/lib/postgresql/.ssh/id_rsa"
-repmgr_public_key_path: "/var/lib/postgresql/.ssh/id_rsa.pub"
-repmgr_ssh_key_args: "-b 2048 -t rsa"
-repmgr_ssh_allowed_group: ''
 
 # Logging
 repmgr_log_level: "INFO"
@@ -917,7 +925,7 @@ repmgr_event_notification_command: ""
 repmgr_event_notifications: ""
 
 # Directories
-repmgr_pg_bindir: "{{postgresql_bin_directory}}"
+repmgr_pg_bindir: "{{postgresql_lib_bin_directory}}"
 repmgr_repmgr_bindir: "{{postgresql_bin_directory}}"
 
 # Commands & options
@@ -967,10 +975,11 @@ repmgr_async_query_timeout: 60
 repmgr_keep_history_days: 14
 
 # Service commands
-repmgr_service_start_command :  "sudo systemctl start postgresql-{{postgresql_version}}"
-repmgr_service_stop_command :  "sudo systemctl stop postgresql-{{postgresql_version}}"
-repmgr_service_restart_command :  "sudo systemctl restart postgresql-{{postgresql_version}}"
-repmgr_service_reload_command :  "sudo systemctl reload postgresql-{{postgresql_version}}"
+# (TODO: these might be specific for Ubuntu, other systems use other names for the service units)
+repmgr_service_start_command : "sudo systemctl start postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}"
+repmgr_service_stop_command : "sudo systemctl stop postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}"
+repmgr_service_restart_command : "sudo systemctl restart postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}"
+repmgr_service_reload_command : "sudo systemctl reload postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}"
 repmgr_service_promote_command :  ""
 
 # Warning levels
@@ -990,9 +999,6 @@ barman_server_ip_or_cidr: "127.0.0.1/32"
 
 # optional settings
 
-# if this is empty, then the backup of the repmgr cluster will be named after the primary's hostname
-# you could set this to a symbolic name like 'cluster-backup'
-barman_repmgr_backup_name: "" 
 barman_version: "2.x"
 barman_conf_directory: "/etc"
 barman_os_user: "barman"
@@ -1000,3 +1006,17 @@ barman_os_group: "barman"
 barman_pg_user: "barman"
 barman_pg_streaming_user: "barman_streaming"
 barman_bin_directory: "/usr/bin"
+barman_ssh_port: 22
+# bzip2 can also be used, but beware: it is _extremely_ slow (so you need to wait some time for backups to finish)
+barman_compression: "gzip"
+# cron schedule when to run backup jobs for all configured backups
+barman_backup_schedule: "0 4 * * *"
+
+# format: "REDUNDANCY value | RECOVERY WINDOW OF value {DAYS | WEEKS | MONTHS}}"
+# where 'value' needs to be an integer > 0
+barman_retention_policy: "REDUNDANCY 4"
+
+# if you want to recover directly to the target hosts as 'postgres' user
+barman_enable_passwordless_access_to_postgres: false
+barman_private_key_path: "/var/lib/barman/.ssh/id_ed25519"
+barman_public_key_path: "/var/lib/barman/.ssh/id_ed25519.pub"

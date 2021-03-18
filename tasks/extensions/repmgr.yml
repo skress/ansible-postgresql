@@ -3,7 +3,7 @@
 # NOTE: the package name is also used to pin the apt package
 - name: PostgreSQL | Extensions | Make sure the postgres repmgr extensions are installed | apt
   apt:
-    name: "postgresql-{{postgresql_version}}-repmgr"
+    name: "{{ barman_package_name }}"
     state: present
     update_cache: yes
     cache_valid_time: "{{apt_cache_valid_time | default (3600)}}"
@@ -21,8 +21,9 @@
 
 - name: PostgreSQL | Extensions | Make sure the postgres repmgr extensions are installed | yum
   yum:
-    name: "repmgr{{postgresql_version}}-{{repmgr_version}}"
+    name: "{{ barman_package_name }}"
     state: present
   when: ansible_pkg_mgr == "yum"
   notify:
     - restart postgresql
+

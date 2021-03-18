@@ -5,5 +5,8 @@ postgresql_service_name: "postgresql@{{ postgresql_version }}-{{ postgresql_clus
 
 postgresql_bin_directory: /usr/bin
 
+# Path to PostgreSQL binary directory (location of pg_ctl, pg_basebackup etc.).
+postgresql_lib_bin_directory: /usr/lib/postgresql/{{ postgresql_version }}/bin
+
 postgresql_fdw_mysql_packages: "postgresql-{{ postgresql_version }}-mysql-fdw"
 postgresql_fdw_ogr_packages: "postgresql-{{ postgresql_version }}-ogr-fdw"

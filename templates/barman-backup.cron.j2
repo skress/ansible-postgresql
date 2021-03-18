@@ -1,0 +1,3 @@
+# /etc/cron.d/barman-backup: crontab entry for scheduled barman backups
+MAILTO=root
+{{ barman_backup_schedule }} barman [ -x /usr/bin/barman ] && /usr/bin/barman backup all
