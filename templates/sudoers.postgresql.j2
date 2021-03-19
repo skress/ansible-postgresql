@@ -3,4 +3,5 @@ Defaults:postgres !requiretty
 postgres ALL = NOPASSWD: /usr/bin/systemctl stop postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}, \
    /usr/bin/systemctl start   postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}, \
    /usr/bin/systemctl restart postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}, \
-   /usr/bin/systemctl reload  postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}
+   /usr/bin/systemctl reload  postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}, \
+   /usr/bin/systemctl status  postgresql@{{postgresql_version}}-{{postgresql_cluster_name}}
