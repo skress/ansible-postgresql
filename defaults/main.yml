@@ -895,7 +895,6 @@ repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
 # Optional configuration items
 #
 
-# repmgr_target_hosts is currently only used to restrict the pg_hba entries
 repmgr_target_hosts: "{{ ansible_play_hosts_all }}"
 repmgr_user: "repmgr"
 repmgr_database: "repmgr"
@@ -987,6 +986,21 @@ repmgr_archive_ready_warning: 16
 repmgr_archive_ready_critical: 128
 repmgr_replication_lag_warning: 300
 repmgr_replication_lag_critical: 600
+
+# fencing (see README.md for details)
+repmgr_fencing_enabled: false
+repmgr_fencing_quorum: "{{ ( ((ansible_play_hosts_all | length) / 2.0) | round(0, 'floor') | int ) + 1 }}"
+repmgr_fencing_dir: "/var/lib/{{ postgresql_varlib_directory_name }}/fencing"
+repmgr_fencing_script_dir: "{{ repmgr_fencing_dir }}/bin"
+repmgr_fencing_state_dir: "{{ repmgr_fencing_dir }}/cluster_state/{{postgresql_version}}/{{postgresql_cluster_name}}"
+repmgr_fencing_schedule: "* * * * *"
+repmgr_fencing_detect_local_primary_inital_delay: 0
+repmgr_fencing_detect_local_primary_delay: 20
+repmgr_fencing_decide_global_primary_inital_delay: 10
+repmgr_fencing_decide_global_primary_delay: 20
+repmgr_fencing_haproxy_enabled: false
+repmgr_fencing_inform_haproxy_cmd: "/usr/bin/install -o haproxy -g haproxy {{ repmgr_fencing_state_dir }}/current_primary /var/lib/haproxy/current_primary"
+repmgr_ssh_port: 22
 
 #------------------------------------------------------------------------------
 # barman

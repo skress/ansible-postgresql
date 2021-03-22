@@ -1,0 +1,99 @@
+- name: Repmgr | Fencing | Ensure fencing script dir exists
+  file:
+    path: "{{ repmgr_fencing_script_dir }}"
+    state: directory
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_group }}"
+    mode: 0755
+
+- name: Repmgr | Fencing | Ensure fencing state dir exists
+  file:
+    path: "{{ repmgr_fencing_state_dir }}"
+    state: directory
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_group }}"
+    mode: 0755
+
+- name: Repmgr | Fencing | Copy repeat script to fencing script dir
+  copy:
+    src: "files/repmgr-fencing-repeat-script.sh"
+    dest: "{{ repmgr_fencing_script_dir }}/repeat-script.sh"
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_user }}"
+    mode: u+rx,g+rx,o-rwx
+
+- name: Repmgr | Fencing | Copy detection scripts to fencing script dir
+  template:
+    src: "templates/repmgr-fencing-{{ item }}.j2"
+    dest: "{{ repmgr_fencing_script_dir }}/{{ item }}"
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_group }}"
+    mode: u+rx,g+rx,o-rwx
+  loop:
+    - detect-local-primary.sh
+    - decide-global-primary.sh
+
+- name: Repmgr | Fencing | Install cron files for regular updates
+  template:
+    src: "repmgr-fencing.cron.j2"
+    dest: "/etc/cron.d/repmgr-fencing"
+    owner: root
+    group: root
+    mode: 0640
+
+- name: Repmgr | Fencing | HAProxy | Install xinetd
+  apt:
+    name: xinetd
+    state: present
+    update_cache: yes
+    cache_valid_time: "{{apt_cache_valid_time | default (3600)}}"
+  when: repmgr_fencing_haproxy_enabled
+
+- name: Repmgr | Fencing | HAProxy | Configure xinetd service description
+  template:
+    src: "repmgr-fencing-xinetd.conf.j2"
+    dest: "/etc/xinetd.d/repmgr-primary"
+    owner: root
+    group: root
+    mode: u+rw,g+r,o+r
+  register: xinetd_cfg
+  when: repmgr_fencing_haproxy_enabled
+
+- name: Repmgr | Fencing | HAProxy | Include xinetd check in /etc/services
+  lineinfile:
+    path: "/etc/services"
+    regexp: "^repmgr-primary.*"
+    line: "repmgr-primary  23267/tcp                       # Check repmgr primary server"
+  when: repmgr_fencing_haproxy_enabled
+
+- name: Repmgr | Fencing | HAProxy | Install /etc/haproxy/check-repmgr-primary.sh
+  template:
+    src: "repmgr-fencing-check-repmgr-primary.sh.j2"
+    dest: "/etc/haproxy/check-repmgr-primary.sh"
+    owner: haproxy
+    group: haproxy
+    mode: 0750
+  when: repmgr_fencing_haproxy_enabled
+
+# This will not be run from the HAProxy process, it's just that the HAProxy user will
+# be used to run a service for xinetd
+- name: Repmgr | Fencing | HAProxy | Allow haproxy to check postgresql service state
+  template:
+    src: "sudoers.haproxy.j2"
+    dest: "/etc/sudoers.d/haproxy"
+    mode: 0440
+  when: repmgr_fencing_haproxy_enabled
+
+- name: Repmgr | Fencing | HAProxy | Enable and start xinetd service
+  systemd:
+    state: started
+    enabled: yes
+    daemon_reload: yes
+    name: xinetd
+  register: xinetd_svc_started
+
+- name: Repmgr | Fencing | HAProxy | Reload xinetd service if it was not started in the previous step
+  systemd:
+    state: reloaded
+    name: xinetd
+  when: xinetd_cfg is changed and not xinetd_svc_started is changed

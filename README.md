@@ -172,6 +172,34 @@ barman receive-wal --reset <new_primary_hostname>
 barman backup <new_primary_hostname>
 ```
 
+##### Node fencing with repmgr
+
+There is a document in the repmgr Github repository about [node fencing](https://github.com/EnterpriseDB/repmgr/blob/master/doc/repmgrd-node-fencing.md). This document is linked from [repmgrd-basic-configuration](https://repmgr.org/docs/current/repmgrd-basic-configuration.html) in the official guide.
+
+The problem with the node fencing example is that it requires all hosts that "create the fence" to be available when the new primary is promoted. If you have a couple of PgBouncer nodes, and all of these nodes are available during promotion, you can successfully fence off the failed primary.
+
+But consider a setup where you have 3 nodes together with a PgBouncer in DC1 and 2 nodes with a PgBouncer in DC2. You did a switchover to DC2. Now DC2 goes down. The 3 nodes in DC1 have a quorom and elect a new primary. The PgBouncer in DC1 is properly configured during promotion of the new primary. The PgBouncer in DC2 is not reachable, so it cannot be reconfigured.
+
+At some point in time DC2 comes back online. The previous primary still considers itself to be a primary and the PgBouncer in DC2 is also still configured to route the requests to the old primary.
+
+This is exactly the situation that should not happen ... it's also documented as an open issue in this [repmgr Github issue](https://github.com/EnterpriseDB/repmgr/issues/497).
+
+If you want to simply stop routing requests to any PostgreSQL server in case that there is more than 1 primary online, please take a look at https://github.com/gplv2/haproxy-postgresql.
+
+My take on this is: when there was a successful failover to a new primary, I simply do not want any old primary to become available. On the other hand, I had hoped that repmgr would solve this problem such that I do not have to install another distributed system like etcd, consul, ZooKeeper, ...
+
+So my layman's solution can be used when setting `repmgr_fencing_enabled` to `true`. I did not want to add any new complicated services to the mix - ideally just some shell scripts which are started via cron. Currently it looks like this:
+
+There are a couple of shell scripts which are started via cron every minute. The result is that a file is written (ca every 20s) to `/var/lib/postgresql/fencing/cluster_state/13/main/current_primary` and if you enable HAProxy support additionally to `/var/lib/haproxy/current_primary` which contains the current primary PostgreSQL node.
+
+There are two scripts involved: the first runs on each host and uses repmgr's 'cluster show' to see if there is only one primary running. In the example above all nodes in DC1 which had a quorum to elect a new primary will write the hostname of that primary into a file and then this file is distributed via rsync to all other (reachable) nodes. The script on the nodes in DC2 will find some problems via 'cluster show' and just write empty files, i.e. they do not declare any current primary (they also distribute that empty file to all reachable nodes).
+
+The second script runs on each node and simply counts the number of votes from each server as long as that vote file is not older than 1 minute. If a node has the needed number of votes (`repmgr_fencing_quorum` which defaults to 1 more than half the number of nodes), this node is declared as the current running primary and its name is written to the `current_primary` file as described earlier. If no node could be declared as the running primary, then `current_primary` is changed to be an empty file. 
+
+If HAProxy support is enabled, an xinetd service is added which listens on port 23267 for each PostgreSQL node and returns "200 OK" if that node is currently the detected primary, otherwise a "503 Service Unavailable" is returend. The check script which is launched from xinetd checks if the `current_primary` is not older than 1 minute, if it was written after the PostgreSQL service entered the active state, and if its contents are equal to the hostname where the xinetd service is running. Note that this xinetd service is run as user haproxy just because that user is already available on the system and has restricted privileges (e.g. may not login).
+
+Alle these bits and pieces are not providing the current state immediately, there is some lag. But when the current primary starts to fail, it should take at least a minute, probably more before an automatic failover is started. At that time HAProxy already marked all servers as down. When a new primary is elected, it will not be immediately visible in HAProxy - it just takes a maximum of 30 seconds until all scripts have updated the final state. So for most scenarios it should be good enough.
+
 #### Testing
 
 Testing will probably not work anymore ...

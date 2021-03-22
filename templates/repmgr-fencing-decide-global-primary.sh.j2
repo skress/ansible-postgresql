@@ -1,0 +1,26 @@
+#!/bin/bash
+
+QUORUM="{{ repmgr_fencing_quorum }}"
+
+STATE_DIR="{{ repmgr_fencing_state_dir }}"
+
+FILENAME=current_primary
+FILEPATH=${STATE_DIR}/$FILENAME
+TMP_FILEPATH=$(mktemp --tmpdir=${STATE_DIR} .${FILENAME}.XXXXXXXXXX)
+
+FOUND_PRIMARY=0
+cat $(find ${STATE_DIR} -mmin '-1' -a -name "detected_primary_on*") | sort | uniq -c | sort -nr | head -n1 | while read -r CNT HOST; do
+    if [ $CNT -ge $QUORUM ]; then
+        echo $HOST > $TMP_FILEPATH
+        mv $TMP_FILEPATH $FILEPATH
+        FOUND_PRIMARY=1
+        break
+    fi
+done
+if [ -f "${TMP_FILEPATH}" ]; then
+    # we could not declare a primary, overwrite the current primary with an empty file
+    mv $TMP_FILEPATH $FILEPATH
+fi
+{% if repmgr_fencing_haproxy_enabled %}
+sudo {{ repmgr_fencing_inform_haproxy_cmd }}
+{% endif %}

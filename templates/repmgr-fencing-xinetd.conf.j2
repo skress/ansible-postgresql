@@ -1,0 +1,13 @@
+service repmgr-primary
+{
+        flags           = REUSE
+        socket_type     = stream
+        port            = 23267
+        wait            = no
+        user            = haproxy
+        server          = /etc/haproxy/check-repmgr-primary.sh
+        log_on_failure  += USERID
+        disable         = no
+        only_from       = {{ repmgr_network_cidr }} 127.0.0.0/16
+        per_source      = UNLIMITED
+}

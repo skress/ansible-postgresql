@@ -1,0 +1,65 @@
+#!/bin/bash
+
+# xinetd service script which returns checks if this host's PostgreSQL is the current primary.
+#
+# xinetd will run this script as user 'haproxy'. It is not related to the haproxy process in any
+# way. We just need a user which does not have many privileges, and the haproxy user already exists
+# and fits to that requirement.
+#
+# When called this script checks if /var/lib/haproxy/current_primary
+# - is not older than 60 seconds
+# - has been updated after PostgreSQL service has entered active state last time
+#
+# If one of the checks fails, a "503 Service Unavailable" with plain text "Error: <CODE>" is returned.
+# If the aforementioned checks succeeded and the current_primary is this host, 
+# a "200 OK" with plain text "is primary" is returnd,
+# otherwise a "503 Service Unavailable" is returned with plaintext "is standby".
+
+FILE=/var/lib/haproxy/current_primary
+SELF="{{ inventory_hostname }}"
+
+CODE=0
+if [ ! -f "$FILE" ]; then
+    CODE=1
+else
+    NOW=$(date +%s)
+    PGSQL_ACTIVE_SINCE=$(date --date="$(sudo systemctl show postgresql@{{postgresql_version}}-{{postgresql_cluster_name}} --property=ActiveEnterTimestamp|cut -d'=' -f2)" +%s)
+    FILE_MOD=$(date +%s -r $FILE)
+    FILE_AGE=$(( $NOW - $FILE_MOD ))
+    
+    if [ ! $FILE_MOD -gt $PGSQL_ACTIVE_SINCE ]; then
+        CODE=2
+    elif [ ! 60 -gt $FILE_AGE ]; then
+        CODE=3
+    fi
+fi
+
+if [ $CODE -eq 0 ]; then
+    PRIMARY=$(cat $FILE | awk '{$1=$1};1')
+    if [ "$PRIMARY" == "$SELF" ]; then
+        STATUS_CODE="200 OK"
+        CONTENT="is primary"{# WARNING THIS STRING IS USED IN HAPROXY CONFIG, DON'T CHANGE IT #}
+        CONTENT_LENGTH=$(( ${{ '{#' }}CONTENT} + 1 ))
+    else
+        STATUS_CODE="503 Service Unavailable"
+        CONTENT="is standby"
+        CONTENT_LENGTH=$(( ${{ '{#' }}CONTENT} + 1 ))
+    fi
+
+    echo -e "HTTP/1.1 ${STATUS_CODE}\r\n"
+    echo -e "Content-Type: text/plain\r\n"
+    echo -e "Content-Length: ${CONTENT_LENGTH}\r\n"
+    echo -e "\r\n"
+    echo -e "${CONTENT}\r\n"
+    echo -e "\r\n"
+else
+    CONTENT="Error: ${CODE}"
+    CONTENT_LENGTH=$(( ${{ '{#' }}CONTENT} + 1 ))
+
+    echo -e "HTTP/1.1 503 Service Unavailable\r\n"
+    echo -e "Content-Type: text/plain\r\n"
+    echo -e "Content-Length: ${CONTENT_LENGTH}\r\n"
+    echo -e "\r\n"
+    echo -e "${CONTENT}\r\n"
+    echo -e "\r\n"
+fi

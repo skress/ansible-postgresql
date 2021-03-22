@@ -60,6 +60,10 @@
   when: postgresql_ext_install_repmgr and ansible_service_mgr == 'systemd'
   tags: [postgresql, postgresql-extensions]
 
+- import_tasks: extensions/configure_repmgr_fencing.yml
+  when: postgresql_ext_install_repmgr and repmgr_fencing_enabled
+  tags: [postgresql, postgresql-extensions]
+
 - import_tasks: extensions/configure_barman.yml
   when: ansible_pkg_mgr == "apt" and postgresql_ext_install_barman
   tags: [postgresql, postgresql-extensions]

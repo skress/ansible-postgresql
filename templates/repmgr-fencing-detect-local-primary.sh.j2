@@ -1,0 +1,32 @@
+#!/bin/bash
+
+HOSTS="{{ repmgr_target_hosts | join(' ') }}"
+SELF="{{ inventory_hostname }}"
+
+STATE_DIR="{{ repmgr_fencing_state_dir }}"
+
+FILENAME=detected_primary_on_${SELF}
+STATE_FILE=${STATE_DIR}/$FILENAME
+TMP_STATE_FILE=$(mktemp --tmpdir=${STATE_DIR} .${FILENAME}.XXXXXXXXXX)
+
+export STATUS=$({{postgresql_bin_directory}}/repmgr -f {{postgresql_conf_directory}}/repmgr.conf cluster show 2>/dev/stdout)
+
+# get number of primary servers with state "* running"
+CNT_PRIMARY_RUNNING=$(echo "$STATUS" | grep "primary" | grep "* running" | wc -l)
+
+# get number of standy servers with state '! running as primary'
+CNT_STANDBY_AS_PRIMARY=$(echo "$STATUS" | grep "standby" | grep "! running as primary" | wc -l)
+
+if [ $CNT_PRIMARY_RUNNING -eq 1 -a $CNT_STANDBY_AS_PRIMARY -eq 0 ]; then
+    PRIMARY=$(echo "$STATUS" | grep "primary" | grep "* running" | cut -d'|' -f2 | awk '{$1=$1};1')
+    echo "$PRIMARY" > $TMP_STATE_FILE
+fi
+
+# if we did not find a primary, the temp file will remain empty
+mv $TMP_STATE_FILE $STATE_FILE
+
+for H in $HOSTS; do
+    if [ "$SELF" != "$H" ]; then
+	    rsync -e "ssh -p{{ repmgr_ssh_port }}" $STATE_FILE $H:$STATE_FILE
+    fi
+done

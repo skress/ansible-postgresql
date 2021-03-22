@@ -1,0 +1,3 @@
+# this is required when running sudo over ssh without -t:
+Defaults:haproxy !requiretty
+haproxy ALL = NOPASSWD: /usr/bin/systemctl show postgresql@{{postgresql_version}}-{{postgresql_cluster_name}} --property=ActiveEnterTimestamp
