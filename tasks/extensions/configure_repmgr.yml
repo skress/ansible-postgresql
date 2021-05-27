@@ -129,9 +129,6 @@
     msg: "ssh_public_key={{ssh_public_key}}"
   when: repmgr_primary
 
-- debug:
-    msg: "hostvars.items()={{ hostvars.items() }}"
-
 - name: Repmgr | Update authorized_keys for postgres user
   authorized_key:
     user: "{{ postgresql_service_user }}"

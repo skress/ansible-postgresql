@@ -73,6 +73,9 @@ postgresql_database_schemas: []
 # List of user privileges to be applied (optional)
 postgresql_user_privileges: []
 
+# List of additional role grants (optional)
+postgresql_user_grant_roles: []
+
 # pg_hba.conf
 postgresql_pg_hba_default:
   - { type: local, database: all, user: all, address: "",             method: "{{ postgresql_default_auth_method }}", comment: '"local" is for Unix domain socket connections only' }

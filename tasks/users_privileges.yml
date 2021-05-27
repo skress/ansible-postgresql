@@ -15,3 +15,16 @@
   with_items: "{{postgresql_user_privileges}}"
   no_log: true
   when: postgresql_users|length > 0 and repmgr_primary
+
+- name: PostgreSQL | Grant roles to users
+  postgresql_privs:
+    db: "{{item.db | default('postgres')}}"
+    type: group
+    objs: "{{item.granted_roles}}"
+    roles: "{{item.name}}"
+    admin_option: "{{item.admin_option|default(false)}}"
+  become: yes
+  become_user: "{{postgresql_admin_user}}"
+  with_items: "{{postgresql_user_grant_roles}}"
+  no_log: true
+  when: postgresql_users|length > 0 and repmgr_primary
