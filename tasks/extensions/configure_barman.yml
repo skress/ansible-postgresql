@@ -184,6 +184,7 @@
   become: yes
   become_user: "{{ barman_os_user }}"
   ignore_errors: true
+  changed_when: false
   loop: "{{ [ repmgr_primary_hostname ] if postgresql_ext_install_repmgr else ansible_play_hosts_all | map('extract',hostvars) | selectattr('barman_backup_node','defined') | selectattr('barman_backup_node','equalto',true) | map(attribute='inventory_hostname') | list }}"
   when: barman_server|default(false)
 

@@ -38,7 +38,8 @@ if [ $CODE -eq 0 ]; then
     PRIMARY=$(cat $FILE | awk '{$1=$1};1')
     if [ "$PRIMARY" == "$SELF" ]; then
         STATUS_CODE="200 OK"
-        CONTENT="is primary"{# WARNING THIS STRING IS USED IN HAPROXY CONFIG, DON'T CHANGE IT #}
+        {# WARNING THIS STRING IS USED IN HAPROXY CONFIG, DON'T CHANGE IT #}
+        CONTENT="is primary"
         CONTENT_LENGTH=$(( ${{ '{#' }}CONTENT} + 1 ))
     else
         STATUS_CODE="503 Service Unavailable"

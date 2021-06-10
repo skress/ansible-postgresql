@@ -606,7 +606,7 @@ postgresql_log_hostname:          off
 #   %q = stop here in non-session
 #        processes
 #   %% = '%'
-postgresql_log_line_prefix: "%t "
+postgresql_log_line_prefix: "%t %h %a %u %p"
 
 # log lock waits >= deadlock_timeout
 postgresql_log_lock_waits: off
@@ -880,6 +880,7 @@ apt_2ndquadrant_repository: "deb [arch=amd64] https://dl.2ndquadrant.com/default
 #------------------------------------------------------------------------------
 # this is used for repmgr and barman
 postgresql_ssh_key_args: "-t ed25519 -a 100"
+postgresql_ssh_dir: "/var/lib/postgresql/.ssh"
 postgresql_private_key_path: "/var/lib/postgresql/.ssh/id_ed25519"
 postgresql_public_key_path: "/var/lib/postgresql/.ssh/id_ed25519.pub"
 postgresql_ssh_allowed_group: "{{ 'ssh-user' if ansible_distribution == 'Debian' or ansible_distribution == 'Ubuntu' else '' }}"
@@ -901,7 +902,7 @@ repmgr_network_cidr: "127.0.0.1/32" # change to allow access between nodes
 repmgr_target_hosts: "{{ ansible_play_hosts_all }}"
 repmgr_user: "repmgr"
 repmgr_database: "repmgr"
-repmgr_conninfo: "host={{ansible_hostname}} user={{repmgr_user}} dbname={{repmgr_database}} connect_timeout=2{% if postgresql_ssl %} sslmode=require{% endif %}"
+repmgr_conninfo: "host={{inventory_hostname}} user={{repmgr_user}} dbname={{repmgr_database}} connect_timeout=2{% if postgresql_ssl %} sslmode=require{% endif %}"
 repmgr_data_directory: "{{postgresql_data_directory}}"
 
 # Replication

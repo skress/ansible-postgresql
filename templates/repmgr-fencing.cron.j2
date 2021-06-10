@@ -1,4 +1,4 @@
 # /etc/cron.d/repmgr-fencing: crontab entry for scheduled updates of the cluster's current primary
-MAILTO=root
+MAILTO=""
 {{ repmgr_fencing_schedule }} {{ postgresql_service_user }} {{ repmgr_fencing_script_dir }}/repeat-script.sh {{ repmgr_fencing_script_dir }}/detect-local-primary.sh {{ repmgr_fencing_detect_local_primary_inital_delay }} {{ repmgr_fencing_detect_local_primary_delay }}
 {{ repmgr_fencing_schedule }} {{ postgresql_service_user }} {{ repmgr_fencing_script_dir }}/repeat-script.sh {{ repmgr_fencing_script_dir }}/decide-global-primary.sh {{ repmgr_fencing_decide_global_primary_inital_delay }} {{ repmgr_fencing_decide_global_primary_delay }}

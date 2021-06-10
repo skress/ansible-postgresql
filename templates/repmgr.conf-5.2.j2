@@ -21,8 +21,8 @@
 # repmgr and repmgrd require the following items to be explicitly configured.
 
 
-node_id='{{ repmgr_node_id if repmgr_node_id is defined else range(1, 2147483647) | random(seed=ansible_hostname) }}'			# A unique integer greater than zero
-node_name='{{ansible_hostname}}'			 # An arbitrary (but unique) string; we recommend
+node_id='{{ repmgr_node_id if repmgr_node_id is defined else range(1, 2147483647) | random(seed=inventory_hostname) }}'			# A unique integer greater than zero
+node_name='{{inventory_hostname}}'			 # An arbitrary (but unique) string; we recommend
 				 # using the server's hostname or another identifier
 				 # unambiguously associated with the server to avoid
 				 # confusion. Avoid choosing names which reflect the

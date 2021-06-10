@@ -1,5 +1,7 @@
 {% for server in repmgr_target_hosts | sort 
 %}{{ server }}:{{ postgresql_port }}:{{ repmgr_database }}:{{ repmgr_user }}:{{ repmgr_password }}
+{{ hostvars[server].ansible_hostname }}:{{ postgresql_port }}:{{ repmgr_database }}:{{ repmgr_user }}:{{ repmgr_password }}
 {{ server }}:{{ postgresql_port }}:replication:{{ repmgr_replication_user }}:{{ repmgr_replication_password }}
+{{ hostvars[server].ansible_hostname }}:{{ postgresql_port }}:replication:{{ repmgr_replication_user }}:{{ repmgr_replication_password }}
 {% endfor 
 %}

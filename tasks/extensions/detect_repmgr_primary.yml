@@ -19,19 +19,26 @@
   register: repmgr_primary_check
   become: yes
   become_user: postgres
-  ignore_errors: True
+  ignore_errors: true
+  changed_when: false
 
-- name: Repmgr | Fail play when repmgr is already installed and 'repmgr cluster show' did not return with rc==0
+- name: Repmgr | Check if conf file exists
+  stat:
+    path: "{{postgresql_conf_directory}}/repmgr.conf"
+  register: repmgr_conf_stat
+
+- name: Repmgr | Fail play when repmgr is already installed and configured and 'repmgr cluster show' did not return with rc==0
   fail:
     msg: "Command 'repmgr cluster show' returned an error or a warning. Please check your PostgreSQL installation immediately! {{ repmgr_primary_check }}"
-  when: "repmgr_package_name in ansible_facts.packages and repmgr_primary_check.rc != 0"
+  when: "repmgr_package_name in ansible_facts.packages and repmgr_primary_check.rc != 0 and repmgr_conf_stat.stat.exists"
   any_errors_fatal: true
 
+# NOTE: repmgr_primary_hostname has to equal it's inventory_hostname as this is used later (e.g. for barman)
 - name: Repmgr | Declare as primary for existing installation
   set_fact:
     repmgr_primary: true
   register: repmgr_existing_installation_detected
-  when: "repmgr_primary_check.rc == 0 and repmgr_primary_check.stdout == ansible_hostname"
+  when: "repmgr_primary_check.rc == 0 and repmgr_primary_check.stdout == inventory_hostname"
 
 - name: Repmgr | Share state between hosts
   delegate_to: localhost
@@ -42,7 +49,8 @@
 
 - name: Repmgr | Declare as primary for new installation
   set_fact:
-    repmgr_primary: "{{ true if ansible_hostname == ansible_play_hosts_all[0] or inventory_hostname == ansible_play_hosts_all[0] else false }}"
+    repmgr_primary: "{{ true if inventory_hostname == ansible_play_hosts_all[0] else false }}"
+    repmgr_is_new_installation: true
   when: "hostvars['localhost'].get('repmgr_primary_declared', false) != true"
 
 - name: Repmgr | Set repmgr_primary_hostname variable

@@ -27,6 +27,16 @@
   when: ansible_pkg_mgr == "dnf" and ansible_distribution == "Fedora"
   tags: [postgresql, postgresql-install]
 
+- name: Make sure that ssl cert and key can be read when ssl is enabled
+  file:
+    path: "{{ item }}"
+    owner: postgres
+    group: postgres
+    mode: 0600
+  with_items:
+    - "{{ postgresql_ssl_cert_file }}"
+    - "{{ postgresql_ssl_key_file }}"
+
 - import_tasks: extensions/detect_repmgr_primary.yml
   when: postgresql_ext_install_repmgr and ansible_service_mgr == 'systemd'
   tags: [postgresql, postgresql-extensions]

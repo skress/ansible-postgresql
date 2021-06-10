@@ -66,6 +66,15 @@
     line: "repmgr-primary  23267/tcp                       # Check repmgr primary server"
   when: repmgr_fencing_haproxy_enabled
 
+- name: Repmgr | Fencing | HAProxy | Make sure directory /etc/haproxy exists
+  file:
+    path: "/etc/haproxy"
+    owner: root
+    group: root
+    state: directory
+    mode: 0755
+  when: repmgr_fencing_haproxy_enabled
+
 - name: Repmgr | Fencing | HAProxy | Install /etc/haproxy/check-repmgr-primary.sh
   template:
     src: "repmgr-fencing-check-repmgr-primary.sh.j2"

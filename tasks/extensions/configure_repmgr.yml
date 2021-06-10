@@ -1,3 +1,12 @@
+# Note: this step might be necessary for new installations on slower cloud platforms
+#       might make sense to check if it is really needed
+- name: PostgreSQL | Restart PostgreSQL to implement changes
+  service:
+    name: "{{ postgresql_service_name }}"
+    state: reloaded
+    enabled: yes
+  when: repmgr_is_new_installation is defined and repmgr_is_new_installation is true
+
 - name: Repmgr | Make sure the repmgr user is present
   postgresql_user:
     name: "{{ repmgr_user }}"
@@ -150,6 +159,18 @@
     owner: "{{ postgresql_service_user }}"
     group: "{{ postgresql_service_group }}"
     mode: 0600
+
+# NOTE: ssy-kescan MAY NOT use '-H' to hash the entry, otherwise we will always get different entries
+- name: Repmgr | Write host keys of all hosts to known_hosts
+  lineinfile:
+    path: "{{ postgresql_ssh_dir }}/known_hosts"
+    create: yes
+    state: present
+    owner: "{{ postgresql_service_user }}"
+    group: "{{ postgresql_service_group }}"
+    mode: 0640
+    line: "{{ lookup('pipe', 'ssh-keyscan -t' + item[0] + ' -p' + repmgr_ssh_port|string + ' ' + item[1]) }}"
+  loop: "{{ ['rsa', 'ed25519'] |product(repmgr_target_hosts)|list }}"
 
 - name: Repmgr | Check cluster status
   command: "{{postgresql_bin_directory}}/repmgr -f {{postgresql_conf_directory}}/repmgr.conf cluster show"
